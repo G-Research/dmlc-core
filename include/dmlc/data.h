@@ -68,15 +68,19 @@ class DataIter {
 /*!
  * \brief one row of training instance
  * \tparam IndexType type of index
- * \tparam DType type of data (both label and value will be of DType
+ * \tparam DType type of data (both label and value will be of DType)
  */
 template<typename IndexType, typename DType = real_t>
 class Row {
  public:
-  /*! \brief label of the instance */
+  /*! \brief number of labels for the instance */
+  size_t label_count;
+  /*! \brief label(s) of the instance */
   const DType *label;
   /*! \brief weight of the instance */
   const real_t *weight;
+  /*! \brief group number of the instance (for grouped subsampling)*/
+  const uint32_t *subsample_group;
   /*! \brief session-id of the instance */
   const uint64_t *qid;
   /*! \brief length of the sparse vector */
@@ -117,10 +121,22 @@ class Row {
     return value == NULL ? DType(1.0f) : value[i];
   }
   /*!
-   * \return the label of the instance
+   * \return the number of labels for the instance
+   */
+  inline size_t get_label_count() const {
+    return label_count;
+  }
+  /*!
+   * \return the first (or only) label of the instance
    */
   inline DType get_label() const {
     return *label;
+  }
+  /*!
+   * \return all labels of the instance
+   */
+  inline std::vector<DType> get_all_labels() const {
+    return std::vector<DType>(label, label + label_count);
   }
   /*!
    * \return the weight of the instance, this function is always
@@ -128,6 +144,13 @@ class Row {
    */
   inline real_t get_weight() const {
     return weight == NULL ? 1.0f : *weight;
+  }
+  /*!
+   * \return the subsample group of the instance, this function is always
+   *  safe even when subsample_group == NULL
+   */
+  inline uint32_t get_subsample_group() const {
+    return subsample_group == NULL ? 0U : *subsample_group;
   }
   /*!
    * \return the qid of the instance, this function is always
@@ -177,10 +200,14 @@ struct RowBlock {
   size_t size;
   /*! \brief array[size+1], row pointer to beginning of each rows */
   const size_t *offset;
-  /*! \brief array[size] label of each instance */
+  /*! \brief number of labels for each instance */
+  size_t label_count;
+  /*! \brief array[size * label_count] label of each instance */
   const DType *label;
-  /*! \brief With weight: array[size] label of each instance, otherwise nullptr */
+  /*! \brief With weight: array[size] weight of each instance, otherwise nullptr */
   const real_t *weight;
+  /*! \brief With subsample_group: array[size] subsample group of each instance, otherwise nullptr */
+  const uint32_t *subsample_group;
   /*! \brief With qid: array[size] session id of each instance, otherwise nullptr */
   const uint64_t *qid;
   /*! \brief field id*/
@@ -197,9 +224,11 @@ struct RowBlock {
   inline Row<IndexType, DType> operator[](size_t rowid) const;
   /*! \return memory cost of the block in bytes */
   inline size_t MemCostBytes(void) const {
-    size_t cost = size * (sizeof(size_t) + sizeof(DType));
+    size_t cost = size * sizeof(size_t);
+    cost += (size * label_count) * sizeof(DType);
     if (weight != NULL) cost += size * sizeof(real_t);
-    if (qid != NULL) cost += size * sizeof(size_t);
+    if (subsample_group != NULL) cost += size * sizeof(uint32_t);
+    if (qid != NULL) cost += size * sizeof(uint64_t);
     size_t ndata = offset[size] - offset[0];
     if (field != NULL) cost += ndata * sizeof(IndexType);
     if (index != NULL) cost += ndata * sizeof(IndexType);
@@ -216,11 +245,16 @@ struct RowBlock {
     CHECK(begin <= end && end <= size);
     RowBlock ret;
     ret.size = end - begin;
-    ret.label = label + begin;
+    ret.label = label + (begin * label_count);
     if (weight != NULL) {
       ret.weight = weight + begin;
     } else {
       ret.weight = NULL;
+    }
+    if (subsample_group != NULL) {
+      ret.subsample_group = subsample_group + begin;
+    } else {
+      ret.subsample_group = NULL;
     }
     if (qid != NULL) {
       ret.qid = qid + begin;
@@ -367,11 +401,16 @@ inline Row<IndexType, DType>
 RowBlock<IndexType, DType>::operator[](size_t rowid) const {
   CHECK(rowid < size);
   Row<IndexType, DType> inst;
-  inst.label = label + rowid;
+  inst.label = label + (rowid * label_count);
   if (weight != NULL) {
     inst.weight = weight + rowid;
   } else {
     inst.weight = NULL;
+  }
+  if (subsample_group != NULL) {
+    inst.subsample_group = subsample_group + rowid;
+  } else {
+    inst.subsample_group = NULL;
   }
   if (qid != NULL) {
     inst.qid = qid + rowid;
