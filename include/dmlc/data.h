@@ -81,6 +81,8 @@ class Row {
   const real_t *weight;
   /*! \brief group number of the instance (for grouped subsampling)*/
   const uint32_t *subsample_group;
+  /*! \brief predicate value of the instance (for masked subsampling)*/
+  const uint32_t *subsample_mask;
   /*! \brief session-id of the instance */
   const uint64_t *qid;
   /*! \brief length of the sparse vector */
@@ -153,6 +155,13 @@ class Row {
     return subsample_group == NULL ? 0U : *subsample_group;
   }
   /*!
+   * \return the subsample mask value of the instance, this function is always
+   *  safe even when subsample_mask == NULL
+   */
+  inline uint32_t get_subsample_mask() const {
+    return subsample_mask == NULL ? 0U : *subsample_mask;
+  }
+  /*!
    * \return the qid of the instance, this function is always
    *  safe even when qid == NULL
    */
@@ -208,6 +217,8 @@ struct RowBlock {
   const real_t *weight;
   /*! \brief With subsample_group: array[size] subsample group of each instance, otherwise nullptr */
   const uint32_t *subsample_group;
+  /*! \brief With subsample_mask: array[size] subsample mask, otherwise nullptr */
+  const uint32_t *subsample_mask;
   /*! \brief With qid: array[size] session id of each instance, otherwise nullptr */
   const uint64_t *qid;
   /*! \brief field id*/
@@ -228,6 +239,7 @@ struct RowBlock {
     cost += (size * label_count) * sizeof(DType);
     if (weight != NULL) cost += size * sizeof(real_t);
     if (subsample_group != NULL) cost += size * sizeof(uint32_t);
+    if (subsample_mask != NULL) cost += size * sizeof(uint32_t);
     if (qid != NULL) cost += size * sizeof(uint64_t);
     size_t ndata = offset[size] - offset[0];
     if (field != NULL) cost += ndata * sizeof(IndexType);
@@ -255,6 +267,11 @@ struct RowBlock {
       ret.subsample_group = subsample_group + begin;
     } else {
       ret.subsample_group = NULL;
+    }
+    if (subsample_mask != NULL) {
+      ret.subsample_mask = subsample_mask + begin;
+    } else {
+      ret.subsample_mask = NULL;
     }
     if (qid != NULL) {
       ret.qid = qid + begin;
@@ -411,6 +428,11 @@ RowBlock<IndexType, DType>::operator[](size_t rowid) const {
     inst.subsample_group = subsample_group + rowid;
   } else {
     inst.subsample_group = NULL;
+  }
+  if (subsample_mask != NULL) {
+    inst.subsample_mask = subsample_mask + rowid;
+  } else {
+    inst.subsample_mask = NULL;
   }
   if (qid != NULL) {
     inst.qid = qid + rowid;

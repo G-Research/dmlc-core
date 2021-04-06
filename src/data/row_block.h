@@ -35,6 +35,8 @@ struct RowBlockContainer {
   std::vector<real_t> weight;
   /*! \brief array[size] subsample group number of each instance */
   std::vector<uint32_t> subsample_group;
+  /*! \brief array[size] subsample predicate value of each instance */
+  std::vector<uint32_t> subsample_mask;
   /*! \brief array[size] session-id of each instance */
   std::vector<uint64_t> qid;
   /*! \brief field index */
@@ -74,6 +76,7 @@ struct RowBlockContainer {
     value.clear();
     weight.clear();
     subsample_group.clear();
+    subsample_mask.clear();
     qid.clear();
     max_field = 0;
     max_index = 0;
@@ -88,6 +91,7 @@ struct RowBlockContainer {
         label.size() * sizeof(DType) +
         weight.size() * sizeof(real_t) +
         subsample_group.size() * sizeof(uint32_t) +
+        subsample_mask.size() * sizeof(uint32_t) +
         qid.size() * sizeof(uint64_t) +
         field.size() * sizeof(IndexType) +
         index.size() * sizeof(IndexType) +
@@ -114,6 +118,7 @@ struct RowBlockContainer {
     }
     weight.push_back(row.get_weight());
     subsample_group.push_back(row.get_subsample_group());
+    subsample_mask.push_back(row.get_subsample_mask());
     qid.push_back(row.get_qid());
     if (row.field != NULL) {
       for (size_t i = 0; i < row.length; ++i) {
@@ -165,6 +170,11 @@ struct RowBlockContainer {
       subsample_group.insert(subsample_group.end(),
                              batch.subsample_group,
                              batch.subsample_group + batch.size);
+    }
+    if (batch.subsample_mask != NULL) {
+      subsample_mask.insert(subsample_mask.end(),
+                            batch.subsample_mask,
+                            batch.subsample_mask + batch.size);
     }
     if (batch.qid != NULL) {
       qid.insert(qid.end(), batch.qid, batch.qid + batch.size);
@@ -220,6 +230,7 @@ RowBlockContainer<IndexType, DType>::GetBlock(void) const {
   data.label = BeginPtr(label);
   data.weight = BeginPtr(weight);
   data.subsample_group = BeginPtr(subsample_group);
+  data.subsample_mask = BeginPtr(subsample_mask);
   data.qid = BeginPtr(qid);
   data.field = BeginPtr(field);
   data.index = BeginPtr(index);
@@ -234,6 +245,7 @@ RowBlockContainer<IndexType, DType>::Save(Stream *fo) const {
   fo->Write(label);
   fo->Write(weight);
   fo->Write(subsample_group);
+  fo->Write(subsample_mask);
   fo->Write(qid);
   fo->Write(field);
   fo->Write(index);
@@ -249,6 +261,7 @@ RowBlockContainer<IndexType, DType>::Load(Stream *fi) {
   CHECK(fi->Read(&label)) << "Bad RowBlock format";
   CHECK(fi->Read(&weight)) << "Bad RowBlock format";
   CHECK(fi->Read(&subsample_group)) << "Bad RowBlock format";
+  CHECK(fi->Read(&subsample_mask)) << "Bad RowBlock format";
   CHECK(fi->Read(&qid)) << "Bad RowBlock format";
   CHECK(fi->Read(&field)) << "Bad RowBlock format";
   CHECK(fi->Read(&index)) << "Bad RowBlock format";

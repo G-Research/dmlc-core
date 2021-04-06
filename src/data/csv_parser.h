@@ -27,6 +27,7 @@ struct CSVParserParam : public Parameter<CSVParserParam> {
   std::string delimiter;
   int weight_column;
   int subsample_group_column;
+  int subsample_mask_column;
   std::string feature_columns;
   // declare parameters
   DMLC_DECLARE_PARAMETER(CSVParserParam) {
@@ -39,7 +40,9 @@ struct CSVParserParam : public Parameter<CSVParserParam> {
     DMLC_DECLARE_FIELD(weight_column).set_default(-1)
         .describe("Column index that will put into instance weights.");
     DMLC_DECLARE_FIELD(subsample_group_column).set_default(-1)
-        .describe("Column index of the group number (for subsampling) for the instance.");
+        .describe("Column index of the group number (for grouped subsampling) for the instance.");
+    DMLC_DECLARE_FIELD(subsample_mask_column).set_default(-1)
+        .describe("Column index of the predicate value (for masked subsampling) for the instance.");
     DMLC_DECLARE_FIELD(feature_columns).set_default("")
       .describe("Subset of feature column indices that should be retained.");
   }
@@ -137,6 +140,7 @@ struct CSVParserParam : public Parameter<CSVParserParam> {
       }
       feature_column_indices.erase(weight_column);
       feature_column_indices.erase(subsample_group_column);
+      feature_column_indices.erase(subsample_mask_column);
     }
     return;
   }
@@ -199,11 +203,13 @@ ParseBlock(const char *begin,
     std::fill(label.begin(), label.end(), DType(0.0f));
     real_t weight = std::numeric_limits<real_t>::quiet_NaN();
     int64_t subsample_group = -1;
+    int64_t subsample_mask = -1;
 
     while (p != lend) {
       char *endptr;
       DType v;
-      if (column_index != param_.subsample_group_column) {
+      if (column_index != param_.subsample_group_column &&
+          column_index != param_.subsample_mask_column) {
         // if DType is float32
         if (std::is_same<DType, real_t>::value) {
           v = strtof(p, &endptr);
@@ -227,6 +233,8 @@ ParseBlock(const char *begin,
         weight = v;
       } else if (column_index == param_.subsample_group_column) {
         subsample_group = static_cast<int64_t>(strtoll(p, &endptr, 0));
+      } else if (column_index == param_.subsample_mask_column) {
+        subsample_mask = static_cast<int64_t>(strtoll(p, &endptr, 0));
       } else {
         if (param_.feature_column_indices.empty()) {
           if (std::distance(p, static_cast<char const*>(endptr)) != 0) {
@@ -266,6 +274,9 @@ ParseBlock(const char *begin,
     if (subsample_group >= 0 && subsample_group <= std::numeric_limits<uint32_t>::max()) {
       out->subsample_group.push_back(static_cast<uint32_t>(subsample_group));
     }
+    if (subsample_mask >= 0 && subsample_mask <= std::numeric_limits<uint32_t>::max()) {
+      out->subsample_mask.push_back(static_cast<uint32_t>(subsample_mask));
+    }
     out->offset.push_back(out->index.size());
   }
   CHECK_GT(out->label_count, 0);
@@ -273,6 +284,7 @@ ParseBlock(const char *begin,
   CHECK_EQ((out->label.size() / out->label_count) + 1, out->offset.size());
   CHECK(out->weight.size() == 0 || out->weight.size() + 1 == out->offset.size());
   CHECK(out->subsample_group.size() == 0 || out->subsample_group.size() + 1 == out->offset.size());
+  CHECK(out->subsample_mask.size() == 0 || out->subsample_mask.size() + 1 == out->offset.size());
 }
 }  // namespace data
 }  // namespace dmlc
